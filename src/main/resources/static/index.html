@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pizza Delivery — Service Console</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --border: #e2e5ea;
+    --text: #1c1f24;
+    --muted: #6b7280;
+    --accent: #c8321e;
+    --accent-hover: #a82817;
+    --ok: #15803d;
+    --err: #b91c1c;
+    --shadow: 0 1px 2px rgba(0,0,0,.05), 0 4px 12px rgba(0,0,0,.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181d; --panel: #1e2127; --border: #2f333b; --text: #e7e9ec;
+      --muted: #9aa1ab; --accent: #e05038; --accent-hover: #f2664e;
+      --ok: #4ade80; --err: #f87171;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 12px rgba(0,0,0,.25);
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 32px 20px 64px;
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text);
+  }
+  .wrap { max-width: 880px; margin: 0 auto; }
+  header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: -.01em; }
+  .sub { color: var(--muted); font-size: 13px; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); margin-right: 6px; vertical-align: middle; }
+  .dot.up { background: var(--ok); }
+  .dot.down { background: var(--err); }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 18px; margin-top: 18px; box-shadow: var(--shadow);
+  }
+  .card h2 { font-size: 14px; margin: 0 0 14px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+  .field { display: flex; flex-direction: column; gap: 5px; flex: 1 1 180px; }
+  label { font-size: 12px; color: var(--muted); }
+  input {
+    font: inherit; padding: 9px 11px; border: 1px solid var(--border); border-radius: 7px;
+    background: var(--bg); color: var(--text); width: 100%;
+  }
+  input:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+
+  button {
+    font: inherit; font-weight: 500; padding: 9px 16px; border-radius: 7px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--panel); color: var(--text); white-space: nowrap;
+  }
+  button:hover { border-color: var(--muted); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+  button.danger { color: var(--err); }
+  button.danger:hover { border-color: var(--err); }
+  button.sm { padding: 5px 10px; font-size: 13px; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; }
+  tr:last-child td { border-bottom: none; }
+  td.num { font-variant-numeric: tabular-nums; }
+  td.actions { text-align: right; white-space: nowrap; }
+  td.actions button + button { margin-left: 6px; }
+  tr.editing { background: rgba(200, 50, 30, .07); }
+  .empty { color: var(--muted); padding: 24px 8px; text-align: center; }
+
+  #toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(140%);
+    background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--muted);
+    padding: 10px 16px; border-radius: 7px; box-shadow: var(--shadow);
+    transition: transform .22s ease; max-width: 90vw; font-size: 14px;
+  }
+  #toast.show { transform: translateX(-50%) translateY(0); }
+  #toast.ok { border-left-color: var(--ok); }
+  #toast.err { border-left-color: var(--err); }
+
+  details.cfg { margin-top: 18px; }
+  details.cfg summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+  details.cfg .card { margin-top: 10px; }
+  code { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>🍕 Pizza Delivery Console</h1>
+    <span class="sub"><span id="statusDot" class="dot"></span><span id="statusText">connecting…</span></span>
+  </header>
+  <div class="sub">CRUD operations against <code id="epLabel">/api/pizzas</code></div>
+
+  <div class="card">
+    <h2 id="formTitle">Add a pizza</h2>
+    <form id="pizzaForm" class="row" autocomplete="off">
+      <input type="hidden" id="editId">
+      <div class="field">
+        <label for="name">Name</label>
+        <input id="name" required placeholder="Margherita" maxlength="120">
+      </div>
+      <div class="field" style="flex: 0 1 160px">
+        <label for="price">Price</label>
+        <input id="price" required type="number" step="0.01" min="0" placeholder="9.99">
+      </div>
+      <button type="submit" class="primary" id="submitBtn">Create</button>
+      <button type="button" id="cancelBtn" hidden>Cancel</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2 style="display:flex; justify-content:space-between; align-items:center">
+      <span>Pizzas <span id="count" class="sub"></span></span>
+      <button class="sm" id="refreshBtn" type="button">Refresh</button>
+    </h2>
+    <table>
+      <thead>
+        <tr><th style="width:70px">ID</th><th>Name</th><th style="width:120px">Price</th><th style="width:170px"></th></tr>
+      </thead>
+      <tbody id="tbody">
+        <tr><td colspan="4" class="empty">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <details class="cfg">
+    <summary>Settings</summary>
+    <div class="card">
+      <div class="row">
+        <div class="field">
+          <label for="baseUrl">API base URL — leave blank to use this page's origin</label>
+          <input id="baseUrl" placeholder="http://localhost:8080">
+        </div>
+        <button type="button" id="saveBase">Save</button>
+      </div>
+      <p class="sub" style="margin-bottom:0">
+        Set this only if you open the page outside the service (e.g. straight from disk). The service must then allow CORS.
+      </p>
+    </div>
+  </details>
+
+</div>
+
+<div id="toast"></div>
+
+<script>
+(() => {
+  "use strict";
+
+  const $ = (id) => document.getElementById(id);
+  const PATH = "/api/pizzas";
+
+  let base = localStorage.getItem("pizzaApiBase") || "";
+  $("baseUrl").value = base;
+
+  const endpoint = (suffix) => base.replace(/\/+$/, "") + PATH + (suffix || "");
+  const refreshLabel = () => { $("epLabel").textContent = endpoint(""); };
+  refreshLabel();
+
+  // ---- feedback -----------------------------------------------------------
+  let toastTimer;
+  function toast(msg, kind) {
+    const el = $("toast");
+    el.textContent = msg;
+    el.className = "show " + (kind || "ok");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.className = ""; }, 3200);
+  }
+
+  function setStatus(up, text) {
+    $("statusDot").className = "dot " + (up ? "up" : "down");
+    $("statusText").textContent = text;
+  }
+
+  // ---- api ----------------------------------------------------------------
+  async function api(suffix, options) {
+    const res = await fetch(endpoint(suffix), Object.assign({
+      headers: { "Content-Type": "application/json" }
+    }, options || {}));
+
+    if (!res.ok) {
+      let detail = "";
+      try { detail = (await res.text()).slice(0, 300); } catch (e) { /* no body */ }
+      throw new Error(res.status + " " + res.statusText + (detail ? " — " + detail : ""));
+    }
+    return res.status === 204 ? null : res.json();
+  }
+
+  // ---- state / rendering --------------------------------------------------
+  const fmtPrice = (p) => {
+    const n = Number(p);
+    return Number.isFinite(n) ? n.toFixed(2) : String(p == null ? "" : p);
+  };
+
+  let pizzas = [];
+  let editingId = null;
+  let pendingDelete = null;
+
+  function mkBtn(label, cls, onClick) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = cls;
+    b.textContent = label;
+    b.addEventListener("click", onClick);
+    return b;
+  }
+
+  function render() {
+    const tbody = $("tbody");
+    tbody.textContent = "";
+    $("count").textContent = pizzas.length ? "(" + pizzas.length + ")" : "";
+
+    if (!pizzas.length) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.colSpan = 4;
+      td.className = "empty";
+      td.textContent = "No pizzas yet — add one above.";
+      tr.append(td);
+      tbody.append(tr);
+      return;
+    }
+
+    for (const p of pizzas) {
+      const tr = document.createElement("tr");
+      if (String(p.id) === String(editingId)) tr.className = "editing";
+
+      const idTd = document.createElement("td");
+      idTd.className = "num";
+      idTd.textContent = p.id;
+
+      const nameTd = document.createElement("td");
+      nameTd.textContent = p.name == null ? "" : p.name;
+
+      const priceTd = document.createElement("td");
+      priceTd.className = "num";
+      priceTd.textContent = fmtPrice(p.price);
+
+      const actions = document.createElement("td");
+      actions.className = "actions";
+
+      if (String(p.id) === String(pendingDelete)) {
+        actions.append(
+          mkBtn("Confirm", "sm danger", () => remove(p.id)),
+          mkBtn("Keep", "sm", () => { pendingDelete = null; render(); })
+        );
+      } else {
+        actions.append(
+          mkBtn("Edit", "sm", () => startEdit(p)),
+          mkBtn("Delete", "sm danger", () => { pendingDelete = p.id; render(); })
+        );
+      }
+
+      tr.append(idTd, nameTd, priceTd, actions);
+      tbody.append(tr);
+    }
+  }
+
+  // ---- operations ---------------------------------------------------------
+  async function load() {
+    $("refreshBtn").disabled = true;
+    try {
+      const data = await api("");
+      pizzas = Array.isArray(data) ? data : [];
+      pendingDelete = null;
+      setStatus(true, "online · " + pizzas.length + " item" + (pizzas.length === 1 ? "" : "s"));
+      render();
+    } catch (err) {
+      setStatus(false, "unreachable");
+      const tbody = $("tbody");
+      tbody.textContent = "";
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.colSpan = 4;
+      td.className = "empty";
+      td.textContent = "Could not load pizzas.";
+      tr.append(td);
+      tbody.append(tr);
+      toast("Load failed: " + err.message, "err");
+    } finally {
+      $("refreshBtn").disabled = false;
+    }
+  }
+
+  function startEdit(p) {
+    editingId = p.id;
+    pendingDelete = null;
+    $("editId").value = p.id;
+    $("name").value = p.name == null ? "" : p.name;
+    $("price").value = p.price == null ? "" : p.price;
+    $("formTitle").textContent = "Edit pizza #" + p.id;
+    $("submitBtn").textContent = "Save changes";
+    $("cancelBtn").hidden = false;
+    $("name").focus();
+    render();
+  }
+
+  function resetForm() {
+    editingId = null;
+    $("pizzaForm").reset();
+    $("editId").value = "";
+    $("formTitle").textContent = "Add a pizza";
+    $("submitBtn").textContent = "Create";
+    $("cancelBtn").hidden = true;
+    render();
+  }
+
+  async function remove(id) {
+    try {
+      await api("/" + id, { method: "DELETE" });
+      toast("Deleted pizza #" + id);
+      if (String(editingId) === String(id)) resetForm();
+      pendingDelete = null;
+      await load();
+    } catch (err) {
+      toast("Delete failed: " + err.message, "err");
+    }
+  }
+
+  $("pizzaForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const name = $("name").value.trim();
+    if (!name) return;
+    const payload = { name: name, price: $("price").value };
+    const id = $("editId").value;
+
+    $("submitBtn").disabled = true;
+    try {
+      if (id) {
+        await api("/" + id, { method: "PUT", body: JSON.stringify(payload) });
+        toast("Updated pizza #" + id);
+      } else {
+        const created = await api("", { method: "POST", body: JSON.stringify(payload) });
+        toast("Created pizza" + (created && created.id != null ? " #" + created.id : ""));
+      }
+      resetForm();
+      await load();
+    } catch (err) {
+      toast((id ? "Update" : "Create") + " failed: " + err.message, "err");
+    } finally {
+      $("submitBtn").disabled = false;
+    }
+  });
+
+  $("cancelBtn").addEventListener("click", resetForm);
+  $("refreshBtn").addEventListener("click", load);
+
+  $("saveBase").addEventListener("click", () => {
+    base = $("baseUrl").value.trim();
+    localStorage.setItem("pizzaApiBase", base);
+    refreshLabel();
+    toast(base ? "API base set to " + base : "Using this page's origin");
+    load();
+  });
+
+  load();
+})();
+</script>
+</body>
+</html>

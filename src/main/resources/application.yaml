@@ -1,0 +1,8 @@
+spring:
+  application:
+    name: pizzadelivery
+  r2dbc:
+    url: r2dbc:postgresql://localhost:5432/pizzadb
+    username: postgres
+    password: 1234
+
